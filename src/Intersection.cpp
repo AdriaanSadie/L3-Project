@@ -3,6 +3,7 @@
 #include <chrono>
 #include <future>
 #include <random>
+#include <mutex>
 
 #include "Street.h"
 #include "Intersection.h"
@@ -13,13 +14,17 @@
 // L3.1 : Safeguard all accesses to the private members _vehicles and _promises with an appropriate locking mechanism, 
 // that will not cause a deadlock situation where access to the resources is accidentally blocked.
 
+std::mutex mtx;
+
 int WaitingVehicles::getSize()
 {
+  	std::lock_guard<std::mutex> lck(mtx);
     return _vehicles.size();
 }
 
 void WaitingVehicles::pushBack(std::shared_ptr<Vehicle> vehicle, std::promise<void> &&promise)
 {
+  	std::lock_guard<std::mutex> lck(mtx);
     _vehicles.push_back(vehicle);
     _promises.push_back(std::move(promise));
 }
@@ -27,6 +32,9 @@ void WaitingVehicles::pushBack(std::shared_ptr<Vehicle> vehicle, std::promise<vo
 void WaitingVehicles::permitEntryToFirstInQueue()
 {
     // get entries from the front of both queues
+  
+  	std::lock_guard<std::mutex> lck(mtx);
+  
     auto firstPromise = _promises.begin();
     auto firstVehicle = _vehicles.begin();
 
@@ -70,8 +78,10 @@ std::vector<std::shared_ptr<Street>> Intersection::queryStreets(std::shared_ptr<
 void Intersection::addVehicleToQueue(std::shared_ptr<Vehicle> vehicle)
 {
     // L3.3 : Ensure that the text output locks the console as a shared resource. Use the mutex _mtxCout you have added to the base class TrafficObject in the previous task. Make sure that in between the two calls to std-cout at the beginning and at the end of addVehicleToQueue the lock is not held. 
-
+  
+  	std::unique_lock<std::mutex> lck(_mtxCout);
     std::cout << "Intersection #" << _id << "::addVehicleToQueue: thread id = " << std::this_thread::get_id() << std::endl;
+  	lck.unlock();
 
     // add new vehicle to the end of the waiting line
     std::promise<void> prmsVehicleAllowedToEnter;
@@ -80,6 +90,8 @@ void Intersection::addVehicleToQueue(std::shared_ptr<Vehicle> vehicle)
 
     // wait until the vehicle is allowed to enter
     ftrVehicleAllowedToEnter.wait();
+  
+  	lck.lock();
     std::cout << "Intersection #" << _id << ": Vehicle #" << vehicle->getID() << " is granted entry." << std::endl;
 }
 
